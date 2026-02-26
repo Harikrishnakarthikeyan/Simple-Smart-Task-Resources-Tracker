@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
+  Play,
+  CheckCircle,
   LayoutDashboard, 
   CheckSquare, 
   Users, 
@@ -24,17 +26,22 @@ import { User, Task, TimeLog, DashboardStats } from './types';
 
 const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }: any) => {
   const variants: any = {
-    primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
-    secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm',
+    secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 shadow-sm',
+    danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
     ghost: 'text-gray-500 hover:bg-gray-100',
+    subtle: 'bg-slate-100 text-slate-600 hover:bg-slate-200',
   };
+  
+  const hasPadding = className.includes('p-') || className.includes('px-') || className.includes('py-');
+  const paddingClass = hasPadding ? '' : 'px-4 py-2';
+
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`${paddingClass} rounded-lg font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${variants[variant]} ${className}`}
     >
       {children}
     </button>
@@ -107,6 +114,24 @@ export default function App() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const updateTaskStatus = async (taskId: number, newStatus: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...task, status: newStatus })
+      });
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (e) {
+      console.error("Failed to update status", e);
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -477,23 +502,57 @@ export default function App() {
                             {new Date(task.deadline).toLocaleDateString()}
                           </td>
                           <td className="py-4 text-right">
-                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            <div className="flex justify-end gap-2 transition-all">
+                              {task.status === 'Completed' && (
+                                <Button 
+                                  variant="subtle" 
+                                  className="h-9 w-9 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200" 
+                                  onClick={() => updateTaskStatus(task.id, 'To-Do')}
+                                  title="Re-open Task"
+                                >
+                                  <Clock size={18} />
+                                </Button>
+                              )}
+                              
+                              {task.status !== 'Completed' && (
+                                <>
+                                  {task.status !== 'In Progress' && (
+                                    <Button 
+                                      variant="subtle" 
+                                      className="h-9 w-9 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" 
+                                      onClick={() => updateTaskStatus(task.id, 'In Progress')}
+                                      title="Set to In Progress"
+                                    >
+                                      <Play size={18} />
+                                    </Button>
+                                  )}
+                                  <Button 
+                                    variant="subtle" 
+                                    className="h-9 w-9 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200" 
+                                    onClick={() => updateTaskStatus(task.id, 'Completed')}
+                                    title="Mark as Completed"
+                                  >
+                                    <CheckCircle size={18} />
+                                  </Button>
+                                </>
+                              )}
+                              
                               {activeTimer?.taskId === task.id ? (
-                                <Button variant="ghost" className="p-1 h-8 w-8 text-red-600" onClick={stopTimer}>
-                                  <TimerOff size={16} />
+                                <Button variant="subtle" className="h-9 w-9 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" onClick={stopTimer}>
+                                  <TimerOff size={18} />
                                 </Button>
                               ) : (
-                                <Button variant="ghost" className="p-1 h-8 w-8 text-indigo-600" onClick={() => startTimer(task.id)}>
-                                  <Timer size={16} />
+                                <Button variant="subtle" className="h-9 w-9 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200" onClick={() => startTimer(task.id)}>
+                                  <Timer size={18} />
                                 </Button>
                               )}
                               {user.role === 'Admin' && (
                                 <>
-                                  <Button variant="ghost" className="p-1 h-8 w-8 text-blue-600" onClick={() => { setEditingTask(task); setShowTaskModal(true); }}>
-                                    <Edit2 size={16} />
+                                  <Button variant="subtle" className="h-9 w-9 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" onClick={() => { setEditingTask(task); setShowTaskModal(true); }}>
+                                    <Edit2 size={18} />
                                   </Button>
-                                  <Button variant="ghost" className="p-1 h-8 w-8 text-red-600" onClick={() => deleteTask(task.id)}>
-                                    <Trash2 size={16} />
+                                  <Button variant="subtle" className="h-9 w-9 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" onClick={() => deleteTask(task.id)}>
+                                    <Trash2 size={18} />
                                   </Button>
                                 </>
                               )}
