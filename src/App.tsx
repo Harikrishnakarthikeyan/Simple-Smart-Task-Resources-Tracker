@@ -1,0 +1,768 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  LayoutDashboard, 
+  CheckSquare, 
+  Users, 
+  Clock, 
+  BarChart3, 
+  LogOut, 
+  Plus, 
+  Timer, 
+  TimerOff, 
+  Trash2, 
+  Edit2,
+  AlertCircle,
+  Calendar,
+  ChevronRight,
+  User as UserIcon,
+  Bell
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { User, Task, TimeLog, DashboardStats } from './types';
+
+// --- Components ---
+
+const Button = ({ children, onClick, variant = 'primary', className = '', type = 'button', disabled = false }: any) => {
+  const variants: any = {
+    primary: 'bg-indigo-600 text-white hover:bg-indigo-700',
+    secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
+    danger: 'bg-red-600 text-white hover:bg-red-700',
+    ghost: 'text-gray-500 hover:bg-gray-100',
+  };
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${variants[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Card = ({ children, className = '' }: { children: React.ReactNode, className?: string, key?: React.Key }) => (
+  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 ${className}`}>
+    {children}
+  </div>
+);
+
+const Input = ({ label, ...props }: any) => (
+  <div className="space-y-1">
+    {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+    <input
+      {...props}
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+    />
+  </div>
+);
+
+const Select = ({ label, options, ...props }: any) => (
+  <div className="space-y-1">
+    {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+    <select
+      {...props}
+      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all bg-white"
+    >
+      {options.map((opt: any) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  </div>
+);
+
+// --- Main App ---
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activeTimer, setActiveTimer] = useState<{ logId: number, taskId: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  // Auth State
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'User' });
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [tasksRes, usersRes, statsRes] = await Promise.all([
+        fetch('/api/tasks'),
+        fetch('/api/users'),
+        fetch('/api/stats')
+      ]);
+      setTasks(await tasksRes.json());
+      setUsers(await usersRes.json());
+      setStats(await statsRes.json());
+    } catch (e) {
+      console.error("Failed to fetch data", e);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUser(data);
+      } else {
+        alert(data.error);
+      }
+    } catch (e) {
+      alert("Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const taskData = Object.fromEntries(formData.entries());
+    
+    const method = editingTask ? 'PUT' : 'POST';
+    const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(taskData)
+      });
+      if (res.ok) {
+        setShowTaskModal(false);
+        setEditingTask(null);
+        fetchData();
+      }
+    } catch (e) {
+      alert("Failed to save task");
+    }
+  };
+
+  const deleteTask = async (id: number) => {
+    if (!confirm("Are you sure?")) return;
+    await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    fetchData();
+  };
+
+  const startTimer = async (taskId: number) => {
+    const res = await fetch('/api/time/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: taskId, user_id: user?.id })
+    });
+    const data = await res.json();
+    setActiveTimer({ logId: data.id, taskId });
+  };
+
+  const stopTimer = async () => {
+    if (!activeTimer) return;
+    await fetch('/api/time/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log_id: activeTimer.logId })
+    });
+    setActiveTimer(null);
+    fetchData();
+  };
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          <Card className="p-8">
+            <div className="flex justify-center mb-6">
+              <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+                <LayoutDashboard size={28} />
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-center text-gray-900 mb-2">TeamSync</h1>
+            <p className="text-gray-500 text-center mb-8">
+              {authMode === 'login' ? 'Welcome back! Please login.' : 'Create your account to get started.'}
+            </p>
+
+            <form onSubmit={handleAuth} className="space-y-4">
+              {authMode === 'register' && (
+                <Input 
+                  label="Full Name" 
+                  required 
+                  value={authForm.name}
+                  onChange={(e: any) => setAuthForm({ ...authForm, name: e.target.value })}
+                />
+              )}
+              <Input 
+                label="Email Address" 
+                type="email" 
+                required 
+                value={authForm.email}
+                onChange={(e: any) => setAuthForm({ ...authForm, email: e.target.value })}
+              />
+              <Input 
+                label="Password" 
+                type="password" 
+                required 
+                value={authForm.password}
+                onChange={(e: any) => setAuthForm({ ...authForm, password: e.target.value })}
+              />
+              {authMode === 'register' && (
+                <Select 
+                  label="Role"
+                  options={[
+                    { value: 'User', label: 'Team Member' },
+                    { value: 'Admin', label: 'Manager / Admin' }
+                  ]}
+                  value={authForm.role}
+                  onChange={(e: any) => setAuthForm({ ...authForm, role: e.target.value })}
+                />
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Register'}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button 
+                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                className="text-indigo-600 hover:underline text-sm font-medium"
+              >
+                {authMode === 'login' ? "Don't have an account? Register" : "Already have an account? Login"}
+              </button>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const NavItem = ({ id, icon: Icon, label, adminOnly = false }: any) => {
+    if (adminOnly && user.role !== 'Admin') return null;
+    const active = activeTab === id;
+    return (
+      <button
+        onClick={() => setActiveTab(id)}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+          active ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        <Icon size={20} />
+        <span>{label}</span>
+        {active && <motion.div layoutId="nav-active" className="ml-auto w-1.5 h-1.5 bg-indigo-600 rounded-full" />}
+      </button>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-gray-200 p-6 flex flex-col fixed h-full">
+        <div className="flex items-center gap-3 mb-10 px-2">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+            <LayoutDashboard size={20} />
+          </div>
+          <span className="text-xl font-bold text-gray-900">TeamSync</span>
+        </div>
+
+        <nav className="space-y-2 flex-1">
+          <NavItem id="dashboard" icon={LayoutDashboard} label="Dashboard" />
+          <NavItem id="tasks" icon={CheckSquare} label="Tasks" />
+          <NavItem id="resources" icon={Users} label="Team" adminOnly />
+          <NavItem id="time" icon={Clock} label="Time Logs" />
+          <NavItem id="reports" icon={BarChart3} label="Reports" adminOnly />
+        </nav>
+
+        <div className="pt-6 border-t border-gray-100">
+          <div className="flex items-center gap-3 px-2 mb-4">
+            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
+              <UserIcon size={20} />
+            </div>
+            <div className="overflow-hidden">
+              <p className="text-sm font-semibold text-gray-900 truncate">{user.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user.role}</p>
+            </div>
+          </div>
+          <Button variant="ghost" className="w-full justify-start" onClick={() => setUser(null)}>
+            <LogOut size={18} />
+            <span>Logout</span>
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 ml-64 p-8">
+        <header className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 capitalize">{activeTab}</h2>
+            <p className="text-gray-500">Manage your team's productivity efficiently.</p>
+          </div>
+          <div className="flex gap-4">
+            {activeTimer && (
+              <div className="flex items-center gap-3 bg-indigo-600 text-white px-4 py-2 rounded-lg animate-pulse">
+                <Timer size={18} />
+                <span className="font-mono font-medium">Timer Active</span>
+                <button onClick={stopTimer} className="hover:bg-indigo-700 p-1 rounded">
+                  <TimerOff size={18} />
+                </button>
+              </div>
+            )}
+            <button className="p-2 text-gray-400 hover:text-gray-600 bg-white rounded-lg border border-gray-200">
+              <Bell size={20} />
+            </button>
+            {user.role === 'Admin' && (
+              <Button onClick={() => { setEditingTask(null); setShowTaskModal(true); }}>
+                <Plus size={18} />
+                <span>New Task</span>
+              </Button>
+            )}
+          </div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+          >
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {[
+                    { label: 'Total Tasks', value: stats?.total || 0, icon: CheckSquare, color: 'text-blue-600', bg: 'bg-blue-50' },
+                    { label: 'Completed', value: stats?.completed || 0, icon: CheckSquare, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: 'Pending', value: stats?.pending || 0, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+                    { label: 'Overdue', value: stats?.overdue || 0, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+                  ].map((stat, i) => (
+                    <Card key={i} className="flex items-center gap-4">
+                      <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center`}>
+                        <stat.icon size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 font-medium">{stat.label}</p>
+                        <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Recent Tasks */}
+                  <Card className="lg:col-span-2">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-bold text-gray-900">Recent Tasks</h3>
+                      <button onClick={() => setActiveTab('tasks')} className="text-indigo-600 text-sm font-medium hover:underline">View All</button>
+                    </div>
+                    <div className="space-y-4">
+                      {tasks.slice(0, 5).map(task => (
+                        <div key={task.id} className="flex items-center justify-between p-4 border border-gray-50 rounded-xl hover:bg-gray-50 transition-all">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-2 h-2 rounded-full ${
+                              task.priority === 'High' ? 'bg-red-500' : task.priority === 'Medium' ? 'bg-amber-500' : 'bg-blue-500'
+                            }`} />
+                            <div>
+                              <p className="font-semibold text-gray-900">{task.title}</p>
+                              <p className="text-xs text-gray-500 flex items-center gap-1">
+                                <Calendar size={12} /> {new Date(task.deadline).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              task.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 
+                              task.status === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {task.status}
+                            </span>
+                            <ChevronRight size={16} className="text-gray-300" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Team Workload */}
+                  <Card>
+                    <h3 className="font-bold text-gray-900 mb-6">Team Workload</h3>
+                    <div className="space-y-6">
+                      {users.slice(0, 5).map(u => (
+                        <div key={u.id}>
+                          <div className="flex justify-between text-sm mb-2">
+                            <span className="font-medium text-gray-700">{u.name}</span>
+                            <span className="text-gray-500">{u.workload} tasks</span>
+                          </div>
+                          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min((u.workload || 0) * 20, 100)}%` }}
+                              className={`h-full rounded-full ${
+                                (u.workload || 0) > 4 ? 'bg-red-500' : (u.workload || 0) > 2 ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'tasks' && (
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-bottom border-gray-100 text-xs text-gray-500 uppercase tracking-wider">
+                        <th className="pb-4 font-semibold">Task</th>
+                        <th className="pb-4 font-semibold">Assigned To</th>
+                        <th className="pb-4 font-semibold">Priority</th>
+                        <th className="pb-4 font-semibold">Status</th>
+                        <th className="pb-4 font-semibold">Deadline</th>
+                        <th className="pb-4 font-semibold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {tasks.map(task => (
+                        <tr key={task.id} className="group">
+                          <td className="py-4">
+                            <p className="font-semibold text-gray-900">{task.title}</p>
+                            <p className="text-xs text-gray-500 truncate max-w-[200px]">{task.description}</p>
+                          </td>
+                          <td className="py-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                {task.assigned_name?.charAt(0) || '?'}
+                              </div>
+                              <span className="text-sm text-gray-700">{task.assigned_name || 'Unassigned'}</span>
+                            </div>
+                          </td>
+                          <td className="py-4">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                              task.priority === 'High' ? 'bg-red-50 text-red-600' : 
+                              task.priority === 'Medium' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'
+                            }`}>
+                              {task.priority}
+                            </span>
+                          </td>
+                          <td className="py-4">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                              task.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 
+                              task.status === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {task.status}
+                            </span>
+                          </td>
+                          <td className="py-4 text-sm text-gray-600">
+                            {new Date(task.deadline).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 text-right">
+                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                              {activeTimer?.taskId === task.id ? (
+                                <Button variant="ghost" className="p-1 h-8 w-8 text-red-600" onClick={stopTimer}>
+                                  <TimerOff size={16} />
+                                </Button>
+                              ) : (
+                                <Button variant="ghost" className="p-1 h-8 w-8 text-indigo-600" onClick={() => startTimer(task.id)}>
+                                  <Timer size={16} />
+                                </Button>
+                              )}
+                              {user.role === 'Admin' && (
+                                <>
+                                  <Button variant="ghost" className="p-1 h-8 w-8 text-blue-600" onClick={() => { setEditingTask(task); setShowTaskModal(true); }}>
+                                    <Edit2 size={16} />
+                                  </Button>
+                                  <Button variant="ghost" className="p-1 h-8 w-8 text-red-600" onClick={() => deleteTask(task.id)}>
+                                    <Trash2 size={16} />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {activeTab === 'resources' && user.role === 'Admin' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {users.map(u => (
+                  <Card key={u.id} className="relative overflow-hidden">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600">
+                        <UserIcon size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-900">{u.name}</h4>
+                        <p className="text-xs text-gray-500">{u.email}</p>
+                      </div>
+                      <div className="ml-auto">
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                          u.role === 'Admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-500">Current Workload</span>
+                          <span className="font-bold text-gray-900">{u.workload} Active Tasks</span>
+                        </div>
+                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${
+                            (u.workload || 0) > 4 ? 'bg-red-500' : (u.workload || 0) > 2 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`} style={{ width: `${Math.min((u.workload || 0) * 20, 100)}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" className="flex-1 text-xs py-1.5">View Tasks</Button>
+                        <Button variant="secondary" className="flex-1 text-xs py-1.5">Edit Role</Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'time' && (
+              <TimeLogsView userId={user.id} />
+            )}
+
+            {activeTab === 'reports' && user.role === 'Admin' && (
+              <ReportsView tasks={tasks} users={users} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Task Modal */}
+      <AnimatePresence>
+        {showTaskModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-lg"
+            >
+              <Card className="p-8">
+                <h3 className="text-xl font-bold text-gray-900 mb-6">{editingTask ? 'Edit Task' : 'Create New Task'}</h3>
+                <form onSubmit={handleTaskSubmit} className="space-y-4">
+                  <Input label="Task Title" name="title" required defaultValue={editingTask?.title} />
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">Description</label>
+                    <textarea 
+                      name="description" 
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-24"
+                      defaultValue={editingTask?.description}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Select 
+                      label="Priority" 
+                      name="priority" 
+                      defaultValue={editingTask?.priority || 'Medium'}
+                      options={[
+                        { value: 'High', label: 'High' },
+                        { value: 'Medium', label: 'Medium' },
+                        { value: 'Low', label: 'Low' }
+                      ]} 
+                    />
+                    <Select 
+                      label="Status" 
+                      name="status" 
+                      defaultValue={editingTask?.status || 'To-Do'}
+                      options={[
+                        { value: 'To-Do', label: 'To-Do' },
+                        { value: 'In Progress', label: 'In Progress' },
+                        { value: 'Completed', label: 'Completed' }
+                      ]} 
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input label="Deadline" name="deadline" type="datetime-local" required defaultValue={editingTask?.deadline?.slice(0, 16)} />
+                    <Select 
+                      label="Assign To" 
+                      name="assigned_to" 
+                      defaultValue={editingTask?.assigned_to || ''}
+                      options={[
+                        { value: '', label: 'Unassigned' },
+                        ...users.map(u => ({ value: u.id, label: u.name }))
+                      ]} 
+                    />
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowTaskModal(false)}>Cancel</Button>
+                    <Button type="submit" className="flex-1">Save Task</Button>
+                  </div>
+                </form>
+              </Card>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function TimeLogsView({ userId }: { userId: number }) {
+  const [logs, setLogs] = useState<TimeLog[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/time/logs/${userId}`).then(res => res.json()).then(setLogs);
+  }, [userId]);
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '0s';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h > 0 ? h + 'h ' : ''}${m > 0 ? m + 'm ' : ''}${s}s`;
+  };
+
+  return (
+    <Card>
+      <div className="space-y-4">
+        {logs.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">No time logs found.</p>
+        ) : (
+          logs.map(log => (
+            <div key={log.id} className="flex items-center justify-between p-4 border border-gray-50 rounded-xl">
+              <div>
+                <p className="font-semibold text-gray-900">{log.task_title}</p>
+                <p className="text-xs text-gray-500">
+                  {new Date(log.start_time).toLocaleString()} - {log.end_time ? new Date(log.end_time).toLocaleTimeString() : 'Active'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono font-bold text-indigo-600">{formatDuration(log.duration_seconds)}</p>
+                <p className="text-[10px] text-gray-400 uppercase tracking-widest">Duration</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ReportsView({ tasks, users }: { tasks: Task[], users: User[] }) {
+  const completionRate = tasks.length > 0 ? (tasks.filter(t => t.status === 'Completed').length / tasks.length) * 100 : 0;
+  
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <Card>
+          <h3 className="font-bold text-gray-900 mb-6">Task Completion Rate</h3>
+          <div className="flex items-center justify-center py-8">
+            <div className="relative w-48 h-48">
+              <svg className="w-full h-full" viewBox="0 0 100 100">
+                <circle className="text-gray-100 stroke-current" strokeWidth="10" fill="transparent" r="40" cx="50" cy="50" />
+                <motion.circle 
+                  initial={{ strokeDasharray: "0 251.2" }}
+                  animate={{ strokeDasharray: `${(completionRate / 100) * 251.2} 251.2` }}
+                  className="text-indigo-600 stroke-current" 
+                  strokeWidth="10" 
+                  strokeLinecap="round" 
+                  fill="transparent" 
+                  r="40" cx="50" cy="50" 
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-3xl font-bold text-gray-900">{Math.round(completionRate)}%</span>
+                <span className="text-xs text-gray-500 uppercase">Completed</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="font-bold text-gray-900 mb-6">Priority Distribution</h3>
+          <div className="space-y-4">
+            {['High', 'Medium', 'Low'].map(p => {
+              const count = tasks.filter(t => t.priority === p).length;
+              const pct = tasks.length > 0 ? (count / tasks.length) * 100 : 0;
+              return (
+                <div key={p}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-700">{p} Priority</span>
+                    <span className="text-gray-500">{count} tasks</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${
+                      p === 'High' ? 'bg-red-500' : p === 'Medium' ? 'bg-amber-500' : 'bg-blue-500'
+                    }`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <h3 className="font-bold text-gray-900 mb-6">User Performance Summary</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                <th className="pb-4">Team Member</th>
+                <th className="pb-4">Active Tasks</th>
+                <th className="pb-4">Completed Tasks</th>
+                <th className="pb-4">Workload Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {users.map(u => {
+                const userTasks = tasks.filter(t => t.assigned_to === u.id);
+                const active = userTasks.filter(t => t.status !== 'Completed').length;
+                const completed = userTasks.filter(t => t.status === 'Completed').length;
+                return (
+                  <tr key={u.id}>
+                    <td className="py-4 font-medium text-gray-900">{u.name}</td>
+                    <td className="py-4 text-gray-600">{active}</td>
+                    <td className="py-4 text-gray-600">{completed}</td>
+                    <td className="py-4">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                        active > 4 ? 'bg-red-100 text-red-700' : 
+                        active > 2 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {active > 4 ? 'Overloaded' : active > 2 ? 'Busy' : 'Optimal'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
