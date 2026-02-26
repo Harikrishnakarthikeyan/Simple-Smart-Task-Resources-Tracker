@@ -62,11 +62,28 @@ const PORT = 3000;
 // Auth Routes
 app.post("/api/auth/login", (req, res) => {
   const { email, password } = req.body;
-  const user = db.prepare("SELECT id, name, email, role FROM users WHERE email = ? AND password = ?").get(email, password);
-  if (user) {
-    res.json(user);
-  } else {
-    res.status(401).json({ error: "Invalid credentials" });
+  
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  try {
+    const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email.trim());
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.password !== password) {
+      return res.status(401).json({ error: "Enter Correct Password" });
+    }
+
+    // Remove password before sending
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -88,6 +105,12 @@ app.get("/api/users", (req, res) => {
     FROM users u
   `).all();
   res.json(users);
+});
+
+app.put("/api/users/:id/role", (req, res) => {
+  const { role } = req.body;
+  db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, req.params.id);
+  res.json({ success: true });
 });
 
 // Task Routes

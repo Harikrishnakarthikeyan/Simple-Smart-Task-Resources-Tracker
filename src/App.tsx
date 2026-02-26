@@ -17,10 +17,65 @@ import {
   Calendar,
   ChevronRight,
   User as UserIcon,
-  Bell
+  Bell,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Task, TimeLog, DashboardStats } from './types';
+
+// --- Helpers ---
+
+const formatDateTime = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '';
+  // SQLite CURRENT_TIMESTAMP doesn't have 'Z', so we append it to treat as UTC
+  const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  return date.toLocaleString('en-IN', { 
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+};
+
+const formatDateOnly = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  return date.toLocaleDateString('en-IN', { 
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+};
+
+const formatTimeOnly = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  return date.toLocaleTimeString('en-IN', { 
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+};
+
+const formatForInput = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  // Get local time for the input field
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
 
 // --- Components ---
 
@@ -54,15 +109,33 @@ const Card = ({ children, className = '' }: { children: React.ReactNode, classNa
   </div>
 );
 
-const Input = ({ label, ...props }: any) => (
-  <div className="space-y-1">
-    {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
-    <input
-      {...props}
-      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-    />
-  </div>
-);
+const Input = ({ label, type, ...props }: any) => {
+  const [showPassword, setShowPassword] = React.useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
+  return (
+    <div className="space-y-1">
+      {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+      <div className="relative">
+        <input
+          {...props}
+          type={inputType}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all pr-10"
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const Select = ({ label, options, ...props }: any) => (
   <div className="space-y-1">
@@ -88,12 +161,24 @@ export default function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activeTimer, setActiveTimer] = useState<{ logId: number, taskId: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [taskFilter, setTaskFilter] = useState<number | null>(null);
 
   // Auth State
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'User' });
+
+  const handleLogout = () => {
+    setUser(null);
+    setAuthForm({ name: '', email: '', password: '', role: 'User' });
+    setAuthError(null);
+    setTaskFilter(null);
+    setActiveTab('dashboard');
+  };
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -136,30 +221,69 @@ export default function App() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setAuthError(null);
     const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
+        body: JSON.stringify({
+          ...authForm,
+          email: authForm.email.trim()
+        })
       });
+      
       const data = await res.json();
+      
       if (res.ok) {
         setUser(data);
       } else {
-        alert(data.error);
+        const errMsg = data?.error || "Authentication failed";
+        setAuthError(errMsg);
+        window.alert(errMsg);
       }
-    } catch (e) {
-      alert("Authentication failed");
+    } catch (err) {
+      console.error("Auth error:", err);
+      const errMsg = "Connection error. Please try again.";
+      setAuthError(errMsg);
+      window.alert(errMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRoleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    const formData = new FormData(e.target as HTMLFormElement);
+    const role = formData.get('role');
+    
+    try {
+      const res = await fetch(`/api/users/${editingUser.id}/role`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role })
+      });
+      if (res.ok) {
+        setShowRoleModal(false);
+        setEditingUser(null);
+        fetchData();
+      }
+    } catch (e) {
+      alert("Failed to update role");
     }
   };
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const taskData = Object.fromEntries(formData.entries());
+    const taskData: any = Object.fromEntries(formData.entries());
+    
+    // Convert local deadline to UTC ISO string
+    if (taskData.deadline) {
+      taskData.deadline = new Date(taskData.deadline).toISOString();
+    }
     
     const method = editingTask ? 'PUT' : 'POST';
     const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
@@ -227,6 +351,12 @@ export default function App() {
             </p>
 
             <form onSubmit={handleAuth} className="space-y-4">
+              {authError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  {authError}
+                </div>
+              )}
               {authMode === 'register' && (
                 <Input 
                   label="Full Name" 
@@ -325,7 +455,7 @@ export default function App() {
               <p className="text-xs text-gray-500 truncate">{user.role}</p>
             </div>
           </div>
-          <Button variant="ghost" className="w-full justify-start" onClick={() => setUser(null)}>
+          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
             <LogOut size={18} />
             <span>Logout</span>
           </Button>
@@ -408,7 +538,7 @@ export default function App() {
                             <div>
                               <p className="font-semibold text-gray-900">{task.title}</p>
                               <p className="text-xs text-gray-500 flex items-center gap-1">
-                                <Calendar size={12} /> {new Date(task.deadline).toLocaleDateString()}
+                                <Calendar size={12} /> {formatDateOnly(task.deadline)}
                               </p>
                             </div>
                           </div>
@@ -455,6 +585,20 @@ export default function App() {
 
             {activeTab === 'tasks' && (
               <Card>
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="font-bold text-gray-900">Task List</h3>
+                  {taskFilter && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">Filtering by: <span className="font-bold text-indigo-600">{users.find(u => u.id === taskFilter)?.name}</span></span>
+                      <button 
+                        onClick={() => setTaskFilter(null)}
+                        className="text-xs text-red-500 hover:underline font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
@@ -468,7 +612,9 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {tasks.map(task => (
+                      {tasks
+                        .filter(t => !taskFilter || t.assigned_to === taskFilter)
+                        .map(task => (
                         <tr key={task.id} className="group">
                           <td className="py-4">
                             <p className="font-semibold text-gray-900">{task.title}</p>
@@ -499,18 +645,18 @@ export default function App() {
                             </span>
                           </td>
                           <td className="py-4 text-sm text-gray-600">
-                            {new Date(task.deadline).toLocaleDateString()}
+                            {formatDateOnly(task.deadline)}
                           </td>
                           <td className="py-4 text-right">
-                            <div className="flex justify-end gap-2 transition-all">
+                            <div className="flex justify-end gap-2 flex-wrap max-w-[300px] ml-auto">
                               {task.status === 'Completed' && (
                                 <Button 
                                   variant="subtle" 
-                                  className="h-9 w-9 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200" 
+                                  className="text-[11px] py-1 px-2 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-200" 
                                   onClick={() => updateTaskStatus(task.id, 'To-Do')}
-                                  title="Re-open Task"
                                 >
-                                  <Clock size={18} />
+                                  <Clock size={12} />
+                                  <span>Re-open</span>
                                 </Button>
                               )}
                               
@@ -519,40 +665,61 @@ export default function App() {
                                   {task.status !== 'In Progress' && (
                                     <Button 
                                       variant="subtle" 
-                                      className="h-9 w-9 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" 
+                                      className="text-[11px] py-1 px-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" 
                                       onClick={() => updateTaskStatus(task.id, 'In Progress')}
-                                      title="Set to In Progress"
                                     >
-                                      <Play size={18} />
+                                      <Play size={12} />
+                                      <span>Start</span>
                                     </Button>
                                   )}
                                   <Button 
                                     variant="subtle" 
-                                    className="h-9 w-9 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200" 
+                                    className="text-[11px] py-1 px-2 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200" 
                                     onClick={() => updateTaskStatus(task.id, 'Completed')}
-                                    title="Mark as Completed"
                                   >
-                                    <CheckCircle size={18} />
+                                    <CheckCircle size={12} />
+                                    <span>Complete</span>
                                   </Button>
                                 </>
                               )}
                               
                               {activeTimer?.taskId === task.id ? (
-                                <Button variant="subtle" className="h-9 w-9 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" onClick={stopTimer}>
-                                  <TimerOff size={18} />
+                                <Button 
+                                  variant="subtle" 
+                                  className="text-[11px] py-1 px-2 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" 
+                                  onClick={stopTimer}
+                                >
+                                  <TimerOff size={12} />
+                                  <span>Stop</span>
                                 </Button>
                               ) : (
-                                <Button variant="subtle" className="h-9 w-9 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200" onClick={() => startTimer(task.id)}>
-                                  <Timer size={18} />
+                                <Button 
+                                  variant="subtle" 
+                                  className="text-[11px] py-1 px-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200" 
+                                  onClick={() => startTimer(task.id)}
+                                >
+                                  <Timer size={12} />
+                                  <span>Timer</span>
                                 </Button>
                               )}
+                              
                               {user.role === 'Admin' && (
                                 <>
-                                  <Button variant="subtle" className="h-9 w-9 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" onClick={() => { setEditingTask(task); setShowTaskModal(true); }}>
-                                    <Edit2 size={18} />
+                                  <Button 
+                                    variant="subtle" 
+                                    className="text-[11px] py-1 px-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200" 
+                                    onClick={() => { setEditingTask(task); setShowTaskModal(true); }}
+                                  >
+                                    <Edit2 size={12} />
+                                    <span>Edit</span>
                                   </Button>
-                                  <Button variant="subtle" className="h-9 w-9 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" onClick={() => deleteTask(task.id)}>
-                                    <Trash2 size={18} />
+                                  <Button 
+                                    variant="subtle" 
+                                    className="text-[11px] py-1 px-2 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200" 
+                                    onClick={() => deleteTask(task.id)}
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>Delete</span>
                                   </Button>
                                 </>
                               )}
@@ -600,8 +767,26 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1 text-xs py-1.5">View Tasks</Button>
-                        <Button variant="secondary" className="flex-1 text-xs py-1.5">Edit Role</Button>
+                        <Button 
+                          variant="secondary" 
+                          className="flex-1 text-xs py-1.5"
+                          onClick={() => {
+                            setTaskFilter(u.id);
+                            setActiveTab('tasks');
+                          }}
+                        >
+                          View Tasks
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          className="flex-1 text-xs py-1.5"
+                          onClick={() => {
+                            setEditingUser(u);
+                            setShowRoleModal(true);
+                          }}
+                        >
+                          Edit Role
+                        </Button>
                       </div>
                     </div>
                   </Card>
@@ -665,7 +850,7 @@ export default function App() {
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Deadline" name="deadline" type="datetime-local" required defaultValue={editingTask?.deadline?.slice(0, 16)} />
+                    <Input label="Deadline" name="deadline" type="datetime-local" required defaultValue={formatForInput(editingTask?.deadline)} />
                     <Select 
                       label="Assign To" 
                       name="assigned_to" 
@@ -679,6 +864,44 @@ export default function App() {
                   <div className="flex gap-3 pt-4">
                     <Button variant="secondary" className="flex-1" onClick={() => setShowTaskModal(false)}>Cancel</Button>
                     <Button type="submit" className="flex-1">Save Task</Button>
+                  </div>
+                </form>
+              </Card>
+            </motion.div>
+          </div>
+        )}
+        {showRoleModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm"
+            >
+              <Card>
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-gray-900">Edit User Role</h3>
+                  <button onClick={() => setShowRoleModal(false)} className="text-gray-400 hover:text-gray-600">
+                    <Plus className="rotate-45" size={24} />
+                  </button>
+                </div>
+                <form onSubmit={handleRoleUpdate} className="space-y-6">
+                  <div className="p-4 bg-slate-50 rounded-lg mb-4">
+                    <p className="text-sm font-medium text-gray-700">User: <span className="font-bold">{editingUser?.name}</span></p>
+                    <p className="text-xs text-gray-500">{editingUser?.email}</p>
+                  </div>
+                  <Select 
+                    label="Role"
+                    name="role"
+                    defaultValue={editingUser?.role}
+                    options={[
+                      { value: 'User', label: 'Team Member' },
+                      { value: 'Admin', label: 'Manager / Admin' }
+                    ]}
+                  />
+                  <div className="flex gap-3 pt-2">
+                    <Button variant="secondary" className="flex-1" onClick={() => setShowRoleModal(false)}>Cancel</Button>
+                    <Button type="submit" className="flex-1">Update Role</Button>
                   </div>
                 </form>
               </Card>
@@ -716,7 +939,7 @@ function TimeLogsView({ userId }: { userId: number }) {
               <div>
                 <p className="font-semibold text-gray-900">{log.task_title}</p>
                 <p className="text-xs text-gray-500">
-                  {new Date(log.start_time).toLocaleString()} - {log.end_time ? new Date(log.end_time).toLocaleTimeString() : 'Active'}
+                  {formatDateTime(log.start_time)} - {log.end_time ? formatTimeOnly(log.end_time) : 'Active'}
                 </p>
               </div>
               <div className="text-right">
