@@ -252,15 +252,13 @@ export default function App() {
       } else {
         const errMsg = data?.error || "Authentication failed";
         setAuthError(errMsg);
-        window.alert(errMsg);
       }
     } catch (err: any) {
       console.error("Auth error:", err);
       const errMsg = err.message.includes("Unexpected token") 
-        ? "Server error: The backend returned an invalid response. Check your Vercel logs."
+        ? "Server error: The backend returned an invalid response."
         : `Connection error: ${err.message || "Please try again."}`;
       setAuthError(errMsg);
-      window.alert(errMsg);
     } finally {
       setLoading(false);
     }
