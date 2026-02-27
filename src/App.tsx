@@ -178,6 +178,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('teamsync_user');
     setAuthForm({ name: '', email: '', password: '', role: 'User' });
     setAuthError(null);
     setTaskFilter(null);
@@ -199,6 +200,18 @@ export default function App() {
       console.error("Failed to fetch data", e);
     }
   }, [user]);
+
+  // Persistence
+  useEffect(() => {
+    const savedUser = localStorage.getItem('teamsync_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        localStorage.removeItem('teamsync_user');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -249,6 +262,7 @@ export default function App() {
       
       if (res.ok) {
         setUser(data);
+        localStorage.setItem('teamsync_user', JSON.stringify(data));
       } else {
         const errMsg = data?.error || "Authentication failed";
         setAuthError(errMsg);
