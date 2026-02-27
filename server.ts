@@ -75,14 +75,35 @@ async function initDb() {
   }
 }
 
-initDb().catch(console.error);
+initDb().catch(err => {
+  console.error("Database initialization failed:", err.message);
+});
 
 const app = express();
 app.use(express.json());
 
+// Middleware to check for DATABASE_URL
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') && !process.env.DATABASE_URL) {
+    return res.status(500).json({ 
+      error: "DATABASE_URL is missing. Please add it to your Vercel Environment Variables." 
+    });
+  }
+  next();
+});
+
 const PORT = Number(process.env.PORT) || 3000;
 
 // Auth Routes
+app.get("/api/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (err: any) {
+    res.status(500).json({ status: "error", message: err.message });
+  }
+});
+
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   
