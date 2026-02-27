@@ -238,7 +238,14 @@ export default function App() {
         })
       });
       
-      const data = await res.json();
+      const contentType = res.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server returned ${res.status} ${res.statusText}`);
+      }
       
       if (res.ok) {
         setUser(data);
@@ -249,7 +256,9 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Auth error:", err);
-      const errMsg = `Connection error: ${err.message || "Please try again."}`;
+      const errMsg = err.message.includes("Unexpected token") 
+        ? "Server error: The backend returned an invalid response. Check your Vercel logs."
+        : `Connection error: ${err.message || "Please try again."}`;
       setAuthError(errMsg);
       window.alert(errMsg);
     } finally {
