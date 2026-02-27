@@ -10,9 +10,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Use DATABASE_URL for Supabase/Neon, fallback to local for dev if needed
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl && process.env.NODE_ENV === "production") {
+  console.error("CRITICAL: DATABASE_URL is not set in production environment!");
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  connectionString: databaseUrl,
+  ssl: databaseUrl ? { rejectUnauthorized: false } : false
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
 });
 
 // Initialize Database
@@ -48,6 +58,11 @@ async function initDb() {
       FOREIGN KEY (task_id) REFERENCES tasks(id),
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    -- Enable RLS to satisfy Supabase Advisor
+    ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE time_logs ENABLE ROW LEVEL SECURITY;
   `);
 
   // Seed Admin if not exists

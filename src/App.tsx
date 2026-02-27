@@ -247,9 +247,9 @@ export default function App() {
         setAuthError(errMsg);
         window.alert(errMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Auth error:", err);
-      const errMsg = "Connection error. Please try again.";
+      const errMsg = `Connection error: ${err.message || "Please try again."}`;
       setAuthError(errMsg);
       window.alert(errMsg);
     } finally {
