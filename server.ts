@@ -65,7 +65,7 @@ initDb().catch(console.error);
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Auth Routes
 app.post("/api/auth/login", async (req, res) => {
