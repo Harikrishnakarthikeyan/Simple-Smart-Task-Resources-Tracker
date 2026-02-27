@@ -19,7 +19,9 @@ import {
   User as UserIcon,
   Bell,
   Eye,
-  EyeOff
+  EyeOff,
+  Menu,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Task, TimeLog, DashboardStats } from './types';
@@ -171,6 +173,8 @@ export default function App() {
   // Auth State
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', role: 'User' });
+
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     setUser(null);
@@ -414,7 +418,10 @@ export default function App() {
     const active = activeTab === id;
     return (
       <button
-        onClick={() => setActiveTab(id)}
+        onClick={() => {
+          setActiveTab(id);
+          setIsMobileMenuOpen(false);
+        }}
         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
           active ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'text-gray-500 hover:bg-gray-50'
         }`}
@@ -427,10 +434,43 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <header className="lg:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
+            <LayoutDashboard size={20} />
+          </div>
+          <span className="text-xl font-bold text-gray-900">TeamSync</span>
+        </div>
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+        >
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </header>
+
+      {/* Sidebar Overlay */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 p-6 flex flex-col fixed h-full">
-        <div className="flex items-center gap-3 mb-10 px-2">
+      <aside className={`
+        fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 p-6 flex flex-col z-50 transition-transform duration-300 transform
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0 lg:static lg:h-screen
+      `}>
+        <div className="hidden lg:flex items-center gap-3 mb-10 px-2">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
             <LayoutDashboard size={20} />
           </div>
@@ -446,16 +486,22 @@ export default function App() {
         </nav>
 
         <div className="pt-6 border-t border-gray-100">
-          <div className="flex items-center gap-3 px-2 mb-4">
-            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
+          <button 
+            onClick={() => {
+              setActiveTab('profile');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`flex items-center gap-3 px-2 mb-4 w-full text-left hover:bg-gray-50 p-2 rounded-xl transition-all ${activeTab === 'profile' ? 'bg-indigo-50 ring-1 ring-indigo-100' : ''}`}
+          >
+            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 shrink-0">
               <UserIcon size={20} />
             </div>
             <div className="overflow-hidden">
               <p className="text-sm font-semibold text-gray-900 truncate">{user.name}</p>
               <p className="text-xs text-gray-500 truncate">{user.role}</p>
             </div>
-          </div>
-          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
+          </button>
+          <Button variant="ghost" className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleLogout}>
             <LogOut size={18} />
             <span>Logout</span>
           </Button>
@@ -463,15 +509,15 @@ export default function App() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 p-8">
-        <header className="flex justify-between items-center mb-8">
+      <main className="flex-1 p-4 lg:p-8 overflow-x-hidden">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 capitalize">{activeTab}</h2>
-            <p className="text-gray-500">Manage your team's productivity efficiently.</p>
+            <p className="text-gray-500 text-sm">Manage your team's productivity efficiently.</p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3 w-full sm:w-auto">
             {activeTimer && (
-              <div className="flex items-center gap-3 bg-indigo-600 text-white px-4 py-2 rounded-lg animate-pulse">
+              <div className="flex items-center gap-3 bg-indigo-600 text-white px-4 py-2 rounded-lg animate-pulse flex-1 sm:flex-none justify-center">
                 <Timer size={18} />
                 <span className="font-mono font-medium">Timer Active</span>
                 <button onClick={stopTimer} className="hover:bg-indigo-700 p-1 rounded">
@@ -483,7 +529,7 @@ export default function App() {
               <Bell size={20} />
             </button>
             {user.role === 'Admin' && (
-              <Button onClick={() => { setEditingTask(null); setShowTaskModal(true); }}>
+              <Button onClick={() => { setEditingTask(null); setShowTaskModal(true); }} className="flex-1 sm:flex-none">
                 <Plus size={18} />
                 <span>New Task</span>
               </Button>
@@ -801,6 +847,10 @@ export default function App() {
             {activeTab === 'reports' && user.role === 'Admin' && (
               <ReportsView tasks={tasks} users={users} />
             )}
+
+            {activeTab === 'profile' && (
+              <ProfileView user={user} tasks={tasks} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -913,7 +963,71 @@ export default function App() {
   );
 }
 
-function TimeLogsView({ userId }: { userId: number }) {
+function ProfileView({ user, tasks }: { user: User, tasks: Task[] }) {
+  const completedTasks = tasks.filter(t => t.assigned_to === user.id && t.status === 'Completed');
+  
+  return (
+    <div className="space-y-8">
+      <Card>
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <div className="w-20 h-20 bg-indigo-100 rounded-3xl flex items-center justify-center text-indigo-600">
+            <UserIcon size={40} />
+          </div>
+          <div className="text-center sm:text-left">
+            <h3 className="text-2xl font-bold text-gray-900">{user.name}</h3>
+            <p className="text-gray-500">{user.email}</p>
+            <span className="inline-block mt-2 px-3 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded-full uppercase">
+              {user.role}
+            </span>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
+        <div className="flex flex-col space-y-6">
+          <h4 className="font-bold text-gray-900 flex items-center gap-2">
+            <Clock size={20} className="text-indigo-600" />
+            Recent Time Logs
+          </h4>
+          <TimeLogsView userId={user.id} className="flex-1" />
+        </div>
+
+        <div className="flex flex-col space-y-6">
+          <h4 className="font-bold text-gray-900 flex items-center gap-2">
+            <CheckCircle size={20} className="text-emerald-600" />
+            Completed Tasks
+          </h4>
+          <Card className="p-0 overflow-hidden flex-1">
+            {completedTasks.length === 0 ? (
+              <div className="text-center py-12 h-full flex flex-col justify-center">
+                <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mx-auto mb-3">
+                  <CheckSquare size={24} />
+                </div>
+                <p className="text-gray-500 text-sm">No completed tasks yet.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {completedTasks.map(task => (
+                  <div key={task.id} className="p-4 hover:bg-gray-50 transition-all">
+                    <p className="font-semibold text-gray-900">{task.title}</p>
+                    <div className="flex items-center gap-4 mt-1">
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <Calendar size={12} />
+                        Deadline: {formatDateOnly(task.deadline)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimeLogsView({ userId, className = '' }: { userId: number, className?: string }) {
   const [logs, setLogs] = useState<TimeLog[]>([]);
 
   useEffect(() => {
@@ -929,10 +1043,10 @@ function TimeLogsView({ userId }: { userId: number }) {
   };
 
   return (
-    <Card>
-      <div className="space-y-4">
+    <Card className={`${className} flex flex-col`}>
+      <div className="space-y-4 flex-1">
         {logs.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No time logs found.</p>
+          <div className="text-center text-gray-500 py-8 h-full flex items-center justify-center">No time logs found.</div>
         ) : (
           logs.map(log => (
             <div key={log.id} className="flex items-center justify-between p-4 border border-gray-50 rounded-xl">
